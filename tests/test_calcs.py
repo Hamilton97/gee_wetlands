@@ -19,3 +19,8 @@ class TestRasterCalculators(unittest.TestCase):
         result = self.dataset.map(compute_ndvi(self.nir, self.red))
         ndvi = result.first().select('NDVI').bandNames().getInfo()
         self.assertEqual(['NDVI'], ndvi)
+    
+    def test_add_savi_to_collecton(self):
+        restult = self.dataset.map(compute_savi(self.nir, self.red))
+        savi = restult.first().select('SAVI').bandNames().getInfo()
+        self.assertEqual(['SAVI'], savi)
