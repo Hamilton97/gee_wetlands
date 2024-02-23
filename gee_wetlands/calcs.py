@@ -13,5 +13,5 @@ import ee
 
 def compute_ndvi(nir: str, red: str) -> Callable:
     def wrapper(img: ee.Image) -> ee.Image:
-        return img.normalizedDifference([nir, red]).rename('NDVI')
+        return img.addBands(img.normalizedDifference([nir, red]).rename('NDVI'))
     return wrapper
