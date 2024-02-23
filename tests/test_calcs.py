@@ -24,3 +24,8 @@ class TestRasterCalculators(unittest.TestCase):
         restult = self.dataset.map(compute_savi(self.nir, self.red))
         savi = restult.first().select('SAVI').bandNames().getInfo()
         self.assertEqual(['SAVI'], savi)
+    
+    def test_add_tasseled_cap_to_collection(self):
+        restult = self.dataset.map(compute_tasseled_cap('B2', 'B3', 'B4', 'B8', 'B11', 'B12'))
+        bands = restult.first().select('brightness', 'wetness', 'greenness').bandNames().getInfo()
+        self.assertEqual(['brightness', 'wetness', 'greenness'], bands)
