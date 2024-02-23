@@ -92,3 +92,10 @@ def compute_tasseled_cap(*args) -> Callable:
         return img.addBands(components_image)
 
     return wrapper
+
+
+def compute_ratio(numerator: str, denominator: str) -> Callable:
+    name = f"{numerator}_{denominator}"
+    def wrapper(img: ee.Image) -> ee.Image:
+        return img.addBands(img.select(numerator).divide(img.select(denominator)).rename(name))
+    return wrapper

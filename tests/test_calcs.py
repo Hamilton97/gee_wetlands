@@ -29,3 +29,8 @@ class TestRasterCalculators(unittest.TestCase):
         restult = self.dataset.map(compute_tasseled_cap('B2', 'B3', 'B4', 'B8', 'B11', 'B12'))
         bands = restult.first().select('brightness', 'wetness', 'greenness').bandNames().getInfo()
         self.assertEqual(['brightness', 'wetness', 'greenness'], bands)
+    
+    def test_add_ratio_to_collection(self):
+        restult = self.dataset.map(compute_ratio('B2', 'B3'))
+        bands = restult.first().select('B2_B3').bandNames().getInfo()
+        self.assertEqual(['B2_B3'], bands)
