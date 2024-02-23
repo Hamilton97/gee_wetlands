@@ -8,14 +8,14 @@ from gee_wetlands.calcs import *
 class TestRasterCalculators(unittest.TestCase):
     def setUp(self) -> None:
         ee.Initialize()
-        geom = ee.Geometry.Point([])
-        self.dataset = ee.ImageCollection().filterBounds(geom).filterDate('2020', '2021')
+        geom = ee.Geometry.Point([-77.3850, 44.1631])
+        self.dataset = ee.ImageCollection('COPERNICUS/S2_HARMONIZED').filterBounds(geom).filterDate('2020', '2021')
         self.nir = "B8"
         self.red = 'B4'
         
         return super().setUp()
     
     def test_add_ndvi_collection(self):
-        result = self.dataset.map(lambda x: x.addBands(compute_ndvi(self.nir, self.red)))
-        ndvi = result.first().bandNames().getInfo()
+        result = self.dataset.map(compute_ndvi(self.nir, self.red))
+        ndvi = result.first().select('NDVI').bandNames().getInfo()
         self.assertEqual(['NDVI'], ndvi)
