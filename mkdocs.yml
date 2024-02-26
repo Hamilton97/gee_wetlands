@@ -84,3 +84,4 @@ nav:
     - API Reference:
           - gee_wetlands module: gee_wetlands.md
           - common module: common.md
+          - raster calculators: calcs.md
