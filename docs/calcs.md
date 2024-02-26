@@ -1,3 +1,3 @@
-# Raster Calulation Module
+# Raster Calculation Module
 
 ::: gee_wetlands.calcs
