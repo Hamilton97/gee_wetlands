@@ -82,6 +82,7 @@ nav:
     - Examples:
         - examples/intro.ipynb
         - examples/remote_sensing_datasets.ipynb
+        - examples/sentinel_2_dataset.ipynb
     - API Reference:
           - gee_wetlands module: gee_wetlands.md
           - common module: common.md
