@@ -218,7 +218,7 @@ class Sentinel2TOA(ee.ImageCollection):
 # Functions ----------------------------------------------------------------------------------------
 
 
-def add_ratio(numer: str, deom: str) -> Callable:
+def add_ratio(numerator: str, denominator: str) -> Callable:
     """
     Adds a ratio band to an image.
 
@@ -229,11 +229,10 @@ def add_ratio(numer: str, deom: str) -> Callable:
     Returns:
         Callable: A function that takes an ee.Image as input and returns an ee.Image with the ratio band added.
     """
-    name = f"{numer}_{deom}"
+    name = f"{numerator}_{denominator}"
     def wrapper(img: ee.Image) -> ee.Image:
-        return img.addBands(img.select(numer).divide(img.select(deom)).rename(name))
+        return img.addBands(img.select(numerator).divide(img.select(denominator)).rename(name))
     return wrapper
-
 
 
 def apply_boxcar(radius: int = 1, **kwargs) -> Callable:

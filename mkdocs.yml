@@ -81,6 +81,7 @@ nav:
     - Report Issues: https://github.com/Hamilton97/gee_wetlands/issues
     - Examples:
         - examples/intro.ipynb
+        - examples/sentinel_1_dataset.ipynb
         - examples/sentinel_2_dataset.ipynb
     - API Reference:
           - gee_wetlands module: gee_wetlands.md
