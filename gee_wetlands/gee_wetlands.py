@@ -223,8 +223,8 @@ def add_ratio(numerator: str, denominator: str) -> Callable:
     Adds a ratio band to an image.
 
     Args:
-        numer (str): The name of the numerator band.
-        deom (str): The name of the denominator band.
+        numerator (str): The name of the numerator band.
+        denominator (str): The name of the denominator band.
 
     Returns:
         Callable: A function that takes an ee.Image as input and returns an ee.Image with the ratio band added.
