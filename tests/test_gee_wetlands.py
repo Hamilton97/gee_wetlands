@@ -29,4 +29,22 @@ class TestOpticalRasterCalculators(unittest.TestCase):
         restult = self.dataset.map(add_tasseled_cap('B2', 'B3', 'B4', 'B8', 'B11', 'B12'))
         bands = restult.first().select('brightness', 'wetness', 'greenness').bandNames().getInfo()
         self.assertEqual(['brightness', 'wetness', 'greenness'], bands)
+
+
+class TestRadarRasterFunctions(unittest.TestCase):
+    def setUp(self) -> None:
+        ee.Initialize()
+        geom = ee.Geometry.Point([-77.3850, 44.1631])
+        self.dataset = Sentinel1().preprocess(geom, '2020', '2021', 'ASCENDING')
+        return super().setUp()
+
+    def test_add_ratio(self):
+        actual = self.dataset.map(add_ratio('VV', 'VH')).first().select('VV_VH').bandNames().getInfo()
+        expected = ['VV_VH']
+        self.assertEqual(expected, actual)
     
+    def test_add_boxcar(self):
+        try:
+            self.dataset.map(apply_boxcar()).first().getInfo()
+        except Exception as e:
+            self.fail(msg=e)
