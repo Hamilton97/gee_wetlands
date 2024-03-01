@@ -288,3 +288,111 @@ class Sentinel2TOA(ee.ImageCollection):
         )
 
         return img.updateMask(mask)
+
+
+class ALOSPalsar2(ee.ImageCollection):
+    """
+    A class representing the ALOS PALSAR-2 Image Collection in Google Earth Engine.
+    
+    This class extends the `ee.ImageCollection` class and provides additional functionality
+    specific to the ALOS PALSAR-2 data.
+    """
+    
+    def __init__(self):
+        super().__init__("JAXA/ALOS/PALSAR/YEARLY/SAR_EPOCH")
+    
+    def preprocess(self, start, end) -> ALOSPalsar2:
+        """
+        Preprocesses the ALOS PALSAR-2 Image Collection by filtering it based on the specified start and end dates,
+        and selecting the 'H.*' bands.
+        
+        Args:
+            start (str): The start date in 'YYYY-MM-DD' format.
+            end (str): The end date in 'YYYY-MM-DD' format.
+        
+        Returns:
+            ALOSPalsar2: The preprocessed ALOS PALSAR-2 Image Collection.
+        """
+        return self.filterDate(start, end).select('H.*')
+
+
+class DataCube(ee.ImageCollection):
+    """
+    A class representing a data cube in Google Earth Engine.
+
+    This class extends the `ee.ImageCollection` class and provides additional methods for processing and manipulating the data cube.
+
+    Attributes:
+        BANDS (list): A list of spectral bands in the data cube.
+
+    Methods:
+        select_spectral_bands: Selects the spectral bands based on a pattern.
+        rename_bands: Renames the spectral bands in the data cube.
+        add_spring_ndvi: Adds the spring NDVI (Normalized Difference Vegetation Index) band to the data cube.
+        add_summer_ndvi: Adds the summer NDVI band to the data cube.
+        add_fall_ndvi: Adds the fall NDVI band to the data cube.
+        add_spring_savi: Adds the spring SAVI (Soil-Adjusted Vegetation Index) band to the data cube.
+        add_summer_savi: Adds the summer SAVI band to the data cube.
+        add_fall_savi: Adds the fall SAVI band to the data cube.
+        add_spring_tc: Adds the spring Tasseled Cap bands to the data cube.
+        add_summer_tc: Adds the summer Tasseled Cap bands to the data cube.
+        add_fall_tc: Adds the fall Tasseled Cap bands to the data cube.
+        process: Processes the data cube by applying a series of operations.
+
+    """
+
+    BANDS = ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12"]
+
+    def __init__(self, args: Any):
+        super().__init__(args)
+
+    def select_spectral_bands(self) -> DataCube:
+        """
+        Selects the spectral bands based on a pattern.
+
+        Returns:
+            DataCube: A new data cube with the selected spectral bands.
+        """
+        pattern = "a_spri_b0[2-9].*|a_spri_b[1-2].*|b_summ_b0[2-9].*|b_summ_b[1-2].*|c_fall_b0[2-9].*|c_fall_b[1-2].*"
+        return self.select(pattern)
+
+    def rename_bands(self) -> DataCube:
+        """
+        Renames the spectral bands in the data cube.
+
+        Returns:
+            DataCube: A new data cube with the renamed bands.
+        """
+        spring_bands = self.BANDS
+        summer_bands = [f'{_}_1' for _ in self.BANDS]
+        fall_bands = [f'{_}_2' for _ in self.BANDS]
+
+        new_names = spring_bands + summer_bands + fall_bands
+        return self.select(self.first().bandNames(), new_names)
+
+    # Rest of the methods...
+
+    def process(self, aoi) -> DataCube:
+        """
+        Processes the data cube by applying a series of operations.
+
+        Args:
+            aoi: The area of interest to filter the data cube.
+
+        Returns:
+            DataCube: A new data cube with the processed bands.
+        """
+        return (
+            self.filterBounds(aoi)
+            .select_spectral_bands()
+            .rename_bands()
+            .add_spring_ndvi(self)
+            .add_summer_ndvi(self)
+            .add_fall_ndvi(self)
+            .add_spring_savi(self)
+            .add_summer_savi(self)
+            .add_fall_savi(self)
+            .add_spring_tc(self)
+            .add_summer_tc(self)
+            .add_fall_tc(self)
+        )
