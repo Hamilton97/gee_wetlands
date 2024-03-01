@@ -137,32 +137,6 @@ def add_ratio(numerator: str, denominator: str) -> Callable:
     return wrapper
 
 
-def mask_s2_clouds(img: ee.Image) -> ee.Image:
-    """
-    Masks out clouds and cirrus in a Sentinel-2 image.
-
-    Args:
-        img (ee.Image): The Sentinel-2 image to mask.
-
-    Returns:
-        ee.Image: The masked Sentinel-2 image.
-    """
-    qa = img.select('QA60')
-
-    # Bits 10 and 11 are clouds and cirrus, respectively.
-    cloud_bit_mask = 1 << 10
-    cirrus_bit_mask = 1 << 11
-
-    # Both flags should be set to zero, indicating clear conditions.
-    mask = (
-        qa.bitwiseAnd(cloud_bit_mask)
-        .eq(0)
-        .And(qa.bitwiseAnd(cirrus_bit_mask).eq(0))
-    )
-
-    return img.updateMask(mask)
-
-
 def apply_boxcar(radius: int = 1, **kwargs) -> Callable:
     """
     Applies a boxcar filter to an image.
@@ -180,8 +154,8 @@ def apply_boxcar(radius: int = 1, **kwargs) -> Callable:
     return wrapper
 
 
-# Datasets -----------------------------------------------------------------------------------------
 
+# Datasets -----------------------------------------------------------------------------------------
 
 class Sentinel1(ee.ImageCollection):
     """
@@ -206,31 +180,26 @@ class Sentinel1(ee.ImageCollection):
     def __init__(self):
         super().__init__("COPERNICUS/S1_GRD")
 
-    def preprocess(self, aoi: ee.Geometry, start: str, end: str, look_dir: str = None) -> Sentinel1:
-        """
-        Preprocesses the Sentinel-1 image collection based on the given parameters.
+    def apply_dv_filter(self) -> Sentinel1:
+        return (self.filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
+                .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH')))
 
-        Args:
-            aoi: The area of interest (AOI) to filter the image collection.
-            start: The start date of the time range to filter the image collection.
-            end: The end date of the time range to filter the image collection.
-            look_dir: The look direction of the satellite orbit. Defaults to 'DESCENDING'.
+    def apply_iw_mode_filter(self) -> Sentinel1:
+        return self.filter(ee.Filter.eq('instrumentMode', 'IW'))
 
-        Returns:
-            The preprocessed Sentinel-1 image collection.
+    def apply_acs_filter(self) -> Sentinel1:
+        return self.filter(ee.Filter.eq('orbitProperties_pass', 'ASCENDING'))
+    
+    def apply_desc_filter(self) -> Sentinel1:
+        return self.filter(ee.Filter.eq('orbitProperties_pass', 'DESCENDING'))
 
-        Usage:
-            preprocessed_collection = sentinel1.preprocess(aoi, start, end, look_dir='DESCENDING')
-        """
-        look_dir = look_dir or 'DESCENDING'
-        return (
-            self._preprocessing(aoi, start, end)
-            .filter(ee.Filter.eq('instrumentMode', 'IW'))
-            .filter(ee.Filter.eq('orbitProperties_pass', look_dir))
-            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
-            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))
-            .select('V.*')
-        )
+    def get_orbit_numbers(self) -> ee.List:
+        return self.aggregate_array('relativeOrbitNumber_start').distinct()
+    
+    def select(self, args: Any = None) -> Sentinel1:
+        if args is None:
+            return super().select('V.*')
+        return super().select(args)
 
 
 class Sentinel2TOA(ee.ImageCollection):
@@ -243,48 +212,104 @@ class Sentinel2TOA(ee.ImageCollection):
     def __init__(self):
         super().__init__("COPERNICUS/S2_HARMONIZED")
 
-    def preprocess(self, aoi, start, end, cldy_per: float = 20.0):
-        """
-        Preprocesses the Sentinel-2 TOA image collection by filtering based on cloud cover percentage and selecting specific bands.
+    def apply_cloud_percent_filer(self, percent: float = 20.0) -> Sentinel2TOA:
+        self.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', percent))
 
-        Args:
-            aoi: The area of interest (AOI) to filter the image collection.
-            start: The start date of the time range to filter the image collection.
-            end: The end date of the time range to filter the image collection.
-            cldy_per: The maximum allowable cloud cover percentage. Defaults to 20.0.
+    def apply_cloud_mask(self):
+        
+        def mask_clouds(img: ee.Image) -> ee.Image:
+            """
+            Masks clouds and cirrus in a Sentinel-2 TOA image.
+
+            Args:
+                img: The Sentinel-2 TOA image.
+
+            Returns:
+                The masked Sentinel-2 TOA image.
+            """
+            qa = img.select('QA60')
+
+            # Bits 10 and 11 are clouds and cirrus, respectively.
+            cloud_bit_mask = 1 << 10
+            cirrus_bit_mask = 1 << 11
+
+            # Both flags should be set to zero, indicating clear conditions.
+            mask = (
+                qa.bitwiseAnd(cloud_bit_mask)
+                .eq(0)
+                .And(qa.bitwiseAnd(cirrus_bit_mask).eq(0))
+            )
+
+            return img.updateMask(mask)
+        return self.map(mask_clouds)
+
+    def select(self, args: Any = None):
+        if args is None:
+            return super().select(self.BANDS)
+        return super().select(args)
+
+
+class ALOSPalsar2(ee.ImageCollection):
+    """
+    A class representing the ALOS PALSAR-2 Image Collection in Google Earth Engine.
+    
+    This class extends the `ee.ImageCollection` class and provides additional functionality
+    specific to the ALOS PALSAR-2 data.
+    """
+    
+    def __init__(self):
+        super().__init__("JAXA/ALOS/PALSAR/YEARLY/SAR_EPOCH")
+    
+    def select(self, args: Any = None) -> ALOSPalsar2:
+        if args is None:
+            return super().select('H.*')
+        return super().select(args)
+
+
+class DataCube(ee.ImageCollection):
+    """
+    A class representing a data cube in Google Earth Engine.
+
+    This class extends the `ee.ImageCollection` class and provides additional methods for processing and manipulating the data cube.
+
+    Attributes:
+        BANDS (list): A list of spectral bands in the data cube.
+
+    Methods:
+        select_spectral_bands: Selects the spectral bands based on a pattern.
+        rename_bands: Renames the spectral bands in the data cube.
+        preproces: Preprocesses the data cube by applying a series of operations.
+
+    """
+
+    BANDS = ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B11", "B12"]
+
+    def __init__(self, args: Any):
+        super().__init__(args)
+
+    def select_spectral_bands(self) -> DataCube:
+        """
+        Selects the spectral bands based on a pattern.
 
         Returns:
-            The preprocessed Sentinel-2 TOA image collection.
+            DataCube: A new data cube with the selected spectral bands.
         """
-        return (
-            self._preprocessing(aoi, start, end)
-            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cldy_per))
-            .map(self.mask_clouds)
-            .select(self.BANDS)
-        )
+        pattern = "a_spri_b0[2-9].*|a_spri_b[1-2].*|b_summ_b0[2-9].*|b_summ_b[1-2].*|c_fall_b0[2-9].*|c_fall_b[1-2].*"
+        return self.select(pattern)
 
-    @staticmethod
-    def mask_clouds(img: ee.Image) -> ee.Image:
+    def rename_bands(self) -> DataCube:
         """
-        Masks clouds and cirrus in a Sentinel-2 TOA image.
-
-        Args:
-            img: The Sentinel-2 TOA image.
+        Renames the spectral bands in the data cube.
 
         Returns:
-            The masked Sentinel-2 TOA image.
+            DataCube: A new data cube with the renamed bands.
         """
-        qa = img.select('QA60')
+        spring_bands = self.BANDS
+        summer_bands = [f'{_}_1' for _ in self.BANDS]
+        fall_bands = [f'{_}_2' for _ in self.BANDS]
 
-        # Bits 10 and 11 are clouds and cirrus, respectively.
-        cloud_bit_mask = 1 << 10
-        cirrus_bit_mask = 1 << 11
+        new_names = spring_bands + summer_bands + fall_bands
+        return self.select(self.first().bandNames(), new_names)
 
-        # Both flags should be set to zero, indicating clear conditions.
-        mask = (
-            qa.bitwiseAnd(cloud_bit_mask)
-            .eq(0)
-            .And(qa.bitwiseAnd(cirrus_bit_mask).eq(0))
-        )
-
-        return img.updateMask(mask)
+    def preprocess(self, aoi: ee.Geometry) -> DataCube:
+        return self.filterBounds(aoi).select_spectral_bands().rename_bands()
