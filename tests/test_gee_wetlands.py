@@ -85,4 +85,32 @@ class TestAlosPalsar2(unittest.TestCase):
             pprint(ALOSPalsar2().filterDate('2018', '2020').first().bandNames().getInfo())
         except Exception as e:
             self.fail(msg=e)
+
+
+class TestSentinel1Dataset(unittest.TestCase):
+    def setUp(self) -> None:
+        geom = ee.Geometry.Point([-77.3850, 44.1631])
+        date = '2019-06-21', '2019-09-20'
+        
+        self.s1 = Sentinel1().filterBounds(geom).filterDate(*date)
+
+        return super().setUp()
+
+    def test_relative_orbit_numbers(self):
+        try:
+            pprint(self.s1.get_orbit_numbers().getInfo())
+        except Exception as e:
+            self.fail(msg=e)
+
+    def test_s1_select(self):
+        try:
+            pprint(self.s1.select().first().bandNames().getInfo())
+        except Exception as e:
+            self.fail(msg=e)
     
+    def test_s1_select_1_channel(self):
+        try:
+            pprint(self.s1.select('VV').first().bandNames().getInfo())
+        except Exception as e:
+            self.fail(msg=e)
+            
