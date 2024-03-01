@@ -35,11 +35,6 @@ ee.ImageCollection.composite = composite
 ee.ImageCollection.__add__ = __add__
  
 
-###########
-# Optical #
-###########
-
-
 # Functions ----------------------------------------------------------------------------------------
 
 def add_ndvi(nir: str, red: str) -> Callable:
@@ -125,6 +120,23 @@ def add_tasseled_cap(*args) -> Callable:
     return wrapper
 
 
+def add_ratio(numerator: str, denominator: str) -> Callable:
+    """
+    Adds a ratio band to an image.
+
+    Args:
+        numerator (str): The name of the numerator band.
+        denominator (str): The name of the denominator band.
+
+    Returns:
+        Callable: A function that takes an ee.Image as input and returns an ee.Image with the ratio band added.
+    """
+    name = f"{numerator}_{denominator}"
+    def wrapper(img: ee.Image) -> ee.Image:
+        return img.addBands(img.select(numerator).divide(img.select(denominator)).rename(name))
+    return wrapper
+
+
 def mask_s2_clouds(img: ee.Image) -> ee.Image:
     """
     Masks out clouds and cirrus in a Sentinel-2 image.
@@ -151,7 +163,75 @@ def mask_s2_clouds(img: ee.Image) -> ee.Image:
     return img.updateMask(mask)
 
 
+def apply_boxcar(radius: int = 1, **kwargs) -> Callable:
+    """
+    Applies a boxcar filter to an image.
+
+    Args:
+        radius (int, optional): The radius of the boxcar filter. Defaults to 1.
+        **kwargs: Additional keyword arguments.
+
+    Returns:
+        Callable: A function that applies the boxcar filter to an image.
+
+    """
+    def wrapper(img: ee.Image) -> ee.Image:
+        return img.convolve(ee.Kernel.square(radius, **kwargs))
+    return wrapper
+
+
 # Datasets -----------------------------------------------------------------------------------------
+
+
+class Sentinel1(ee.ImageCollection):
+    """
+    A class representing the Sentinel-1 image collection in Google Earth Engine.
+
+    This class extends the `ee.ImageCollection` class and provides additional methods for preprocessing and filtering
+    Sentinel-1 images.
+
+    Attributes:
+        None
+
+    Methods:
+        preprocess: Preprocesses the Sentinel-1 image collection based on the given parameters.
+        add_dv_filter: Adds a dual-polarization filter to the Sentinel-1 image collection.
+
+    Usage:
+        sentinel1 = Sentinel1()
+        preprocessed_collection = sentinel1.preprocess(aoi, start, end, look_dir='DESCENDING')
+        filtered_collection = sentinel1.add_dv_filter()
+    """
+    
+    def __init__(self):
+        super().__init__("COPERNICUS/S1_GRD")
+
+    def preprocess(self, aoi: ee.Geometry, start: str, end: str, look_dir: str = None) -> Sentinel1:
+        """
+        Preprocesses the Sentinel-1 image collection based on the given parameters.
+
+        Args:
+            aoi: The area of interest (AOI) to filter the image collection.
+            start: The start date of the time range to filter the image collection.
+            end: The end date of the time range to filter the image collection.
+            look_dir: The look direction of the satellite orbit. Defaults to 'DESCENDING'.
+
+        Returns:
+            The preprocessed Sentinel-1 image collection.
+
+        Usage:
+            preprocessed_collection = sentinel1.preprocess(aoi, start, end, look_dir='DESCENDING')
+        """
+        look_dir = look_dir or 'DESCENDING'
+        return (
+            self._preprocessing(aoi, start, end)
+            .filter(ee.Filter.eq('instrumentMode', 'IW'))
+            .filter(ee.Filter.eq('orbitProperties_pass', look_dir))
+            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
+            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))
+            .select('V.*')
+        )
+
 
 class Sentinel2TOA(ee.ImageCollection):
     """
@@ -208,96 +288,3 @@ class Sentinel2TOA(ee.ImageCollection):
         )
 
         return img.updateMask(mask)
-
-
-#########
-# RADAR #
-#########
-
-
-# Functions ----------------------------------------------------------------------------------------
-
-
-def add_ratio(numerator: str, denominator: str) -> Callable:
-    """
-    Adds a ratio band to an image.
-
-    Args:
-        numerator (str): The name of the numerator band.
-        denominator (str): The name of the denominator band.
-
-    Returns:
-        Callable: A function that takes an ee.Image as input and returns an ee.Image with the ratio band added.
-    """
-    name = f"{numerator}_{denominator}"
-    def wrapper(img: ee.Image) -> ee.Image:
-        return img.addBands(img.select(numerator).divide(img.select(denominator)).rename(name))
-    return wrapper
-
-
-def apply_boxcar(radius: int = 1, **kwargs) -> Callable:
-    """
-    Applies a boxcar filter to an image.
-
-    Args:
-        radius (int, optional): The radius of the boxcar filter. Defaults to 1.
-        **kwargs: Additional keyword arguments.
-
-    Returns:
-        Callable: A function that applies the boxcar filter to an image.
-
-    """
-    def wrapper(img: ee.Image) -> ee.Image:
-        return img.convolve(ee.Kernel.square(radius, **kwargs))
-    return wrapper
-
-# Datasets -----------------------------------------------------------------------------------------
-
-class Sentinel1(ee.ImageCollection):
-    """
-    A class representing the Sentinel-1 image collection in Google Earth Engine.
-
-    This class extends the `ee.ImageCollection` class and provides additional methods for preprocessing and filtering
-    Sentinel-1 images.
-
-    Attributes:
-        None
-
-    Methods:
-        preprocess: Preprocesses the Sentinel-1 image collection based on the given parameters.
-        add_dv_filter: Adds a dual-polarization filter to the Sentinel-1 image collection.
-
-    Usage:
-        sentinel1 = Sentinel1()
-        preprocessed_collection = sentinel1.preprocess(aoi, start, end, look_dir='DESCENDING')
-        filtered_collection = sentinel1.add_dv_filter()
-    """
-    
-    def __init__(self):
-        super().__init__("COPERNICUS/S1_GRD")
-
-    def preprocess(self, aoi: ee.Geometry, start: str, end: str, look_dir: str = None) -> Sentinel1:
-        """
-        Preprocesses the Sentinel-1 image collection based on the given parameters.
-
-        Args:
-            aoi: The area of interest (AOI) to filter the image collection.
-            start: The start date of the time range to filter the image collection.
-            end: The end date of the time range to filter the image collection.
-            look_dir: The look direction of the satellite orbit. Defaults to 'DESCENDING'.
-
-        Returns:
-            The preprocessed Sentinel-1 image collection.
-
-        Usage:
-            preprocessed_collection = sentinel1.preprocess(aoi, start, end, look_dir='DESCENDING')
-        """
-        look_dir = look_dir or 'DESCENDING'
-        return (
-            self._preprocessing(aoi, start, end)
-            .filter(ee.Filter.eq('instrumentMode', 'IW'))
-            .filter(ee.Filter.eq('orbitProperties_pass', look_dir))
-            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
-            .filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VH'))
-            .select('V.*')
-        )
