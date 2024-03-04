@@ -83,5 +83,6 @@ nav:
         - examples/intro.ipynb
         - examples/sentinel_1_dataset.ipynb
         - examples/sentinel_2_dataset.ipynb
+        - examples/fourier_transform.ipynb
     - API Reference:
           - gee_wetlands module: gee_wetlands.md
