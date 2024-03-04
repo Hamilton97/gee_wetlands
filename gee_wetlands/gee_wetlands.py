@@ -631,4 +631,197 @@ class HarmonicTimeSeries:
             [_ for _ in self.coef if 'cos' in _],
             [_ for _ in self.coef if 'sin' in _]
         )
-        
+
+
+# Terrain Analysis
+
+
+# Functions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def mk_rectangle(geometry: ee.Geometry) -> ee.Geometry:
+    """
+    Creates a rectangle geometry from the given input geometry.
+
+    Args:
+        geometry (ee.Geometry): The input geometry.
+
+    Returns:
+        ee.Geometry: The rectangle geometry.
+
+    """
+    coords = geometry.bounds().coordinates()
+
+    listCoords = ee.Array.cat(coords, 1)
+    xCoords = listCoords.slice(1, 0, 1)
+    yCoords = listCoords.slice(1, 1, 2)
+
+    xMin = xCoords.reduce("min", [0]).get([0, 0])
+    xMax = xCoords.reduce("max", [0]).get([0, 0])
+    yMin = yCoords.reduce("min", [0]).get([0, 0])
+    yMax = yCoords.reduce("max", [0]).get([0, 0])
+
+    return ee.Geometry.Rectangle(xMin, yMin, xMax, yMax)
+
+
+from typing import Callable
+
+def gaussian_filter(
+    radius: float = 3,
+    sigma: int = 2,
+    units: str = None,
+    normalize: bool = True,
+    magnitude: float = 1.0,
+) -> Callable:
+    """
+    Applies a Gaussian filter to an image.
+
+    Args:
+        radius (float): The radius of the Gaussian kernel. Default is 3.
+        sigma (int): The standard deviation of the Gaussian kernel. Default is 2.
+        units (str): The units of the radius. Default is None, which means 'pixels'.
+        normalize (bool): Whether to normalize the kernel. Default is True.
+        magnitude (float): The magnitude of the kernel. Default is 1.0.
+
+    Returns:
+        Callable: A function that applies the Gaussian filter to an image.
+
+    """
+    units = "pixels" if units is None else units
+    return lambda image: image.convolve(
+        ee.Kernel.gaussian(
+            radius=radius,
+            sigma=sigma,
+            units=units,
+            normalize=normalize,
+            magnitude=magnitude,
+        )
+    )
+
+
+def perona_malik(K=3.5, iterations=10, method=2) -> Callable:
+    """
+    Applies the Perona-Malik anisotropic diffusion algorithm to an image.
+
+    Args:
+        K (float, optional): The diffusion coefficient. Defaults to 3.5.
+        iterations (int, optional): The number of iterations to perform. Defaults to 10.
+        method (int, optional): The diffusion method to use. 1 for exponential diffusion, 2 for quadratic diffusion. Defaults to 2.
+
+    Returns:
+        Callable: A function that applies the Perona-Malik algorithm to an image.
+
+    """
+   
+    def wrapper(img: ee.Image):
+        dxW = ee.Kernel.fixed(3, 3, [[0, 0, 0], [1, -1, 0], [0, 0, 0]])
+
+        dxE = ee.Kernel.fixed(3, 3, [[0, 0, 0], [0, -1, 1], [0, 0, 0]])
+
+        dyN = ee.Kernel.fixed(3, 3, [[0, 1, 0], [0, -1, 0], [0, 0, 0]])
+
+        dyS = ee.Kernel.fixed(3, 3, [[0, 0, 0], [0, -1, 0], [0, 1, 0]])
+
+        lamb = 0.2
+
+        k1 = ee.Image(-1.0 / K)
+        k2 = ee.Image(K).multiply(ee.Image(K))
+
+        for _ in range(0, iterations):
+            dI_W = img.convolve(dxW)
+            dI_E = img.convolve(dxE)
+            dI_N = img.convolve(dyN)
+            dI_S = img.convolve(dyS)
+
+            if method == 1:
+                cW = dI_W.multiply(dI_W).multiply(k1).exp()
+                cE = dI_E.multiply(dI_E).multiply(k1).exp()
+                cN = dI_N.multiply(dI_N).multiply(k1).exp()
+                cS = dI_S.multiply(dI_S).multiply(k1).exp()
+
+                img = img.add(
+                    ee.Image(lamb).multiply(
+                        cN.multiply(dI_N)
+                        .add(cS.multiply(dI_S))
+                        .add(cE.multiply(dI_E))
+                        .add(cW.multiply(dI_W))
+                    )
+                )
+
+            else:
+                cW = ee.Image(1.0).divide(
+                    ee.Image(1.0).add(dI_W.multiply(dI_W).divide(k2))
+                )
+                cE = ee.Image(1.0).divide(
+                    ee.Image(1.0).add(dI_E.multiply(dI_E).divide(k2))
+                )
+                cN = ee.Image(1.0).divide(
+                    ee.Image(1.0).add(dI_N.multiply(dI_N).divide(k2))
+                )
+                cS = ee.Image(1.0).divide(
+                    ee.Image(1.0).add(dI_S.multiply(dI_S).divide(k2))
+                )
+
+                img = img.add(
+                    ee.Image(lamb).multiply(
+                        cN.multiply(dI_N)
+                        .add(cS.multiply(dI_S))
+                        .add(cE.multiply(dI_E))
+                        .add(cW.multiply(dI_W))
+                    )
+                )
+
+        return img
+
+    return wrapper
+
+
+# Processing ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def compute_terrain_variables(dataset: ee.Image, geom: ee.Geometry | ee.FeatureCollection, selectors: list[str] = None) -> ee.Image:
+    """
+    Computes terrain variables for a given dataset within a specified geometry.
+    
+    Args:
+        dataset (ee.Image): The input dataset for terrain analysis.
+        geom (ee.Geometry | ee.FeatureCollection): The geometry or feature collection representing the region of interest.
+        selectors (list[str], optional): The list of band names to select from the computed terrain variables. Defaults to None.
+    
+    Returns:
+        ee.Image: The computed terrain variables dataset.
+    """
+    
+    from tagee import terrainAnalysis
+    
+    if isinstance(geom, ee.FeatureCollection):
+        geom = geom.geometry()
+    
+    coords = geom.bounds().coordinates()
+    
+    rectangle = mk_rectangle(coords)
+    dataset = terrainAnalysis(dataset, rectangle)
+    
+    if selectors is None:
+        return dataset
+    return dataset.select(selectors)
+
+
+def compute_cnwi_terrain_variables(dataset: ee.Image, geom: ee.Geometry | ee.FeatureCollection) -> ee.Image:
+    """
+    Computes the CNWI (Canadian Wetland Inventory) terrain variables for the given dataset and geometry.
+    
+    Args:
+        dataset (ee.Image): The input image dataset.
+        geom (ee.Geometry | ee.FeatureCollection): The geometry or feature collection to compute the terrain variables for.
+    
+    Returns:
+        ee.Image: The image with the computed CNWI terrain variables.
+    """
+    
+    gausian_bands = ["Elevation", "Slope", "GaussianCurvature"]
+    gausian_dataset = gaussian_filter()(dataset)
+    gausian_dataset = compute_terrain_variables(gausian_dataset, geom, gausian_bands)
+    
+    pm_bands = ["HorizontalCurvature", "VerticalCurvature", "MeanCurvature"]
+    pm_dataset = perona_malik()(dataset)
+    pm_dataset = compute_terrain_variables(pm_dataset, geom, selectors=pm_bands)
+    
+    return gausian_dataset.addBands(pm_dataset)
+
