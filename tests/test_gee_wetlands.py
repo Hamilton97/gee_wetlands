@@ -113,4 +113,57 @@ class TestSentinel1Dataset(unittest.TestCase):
             pprint(self.s1.select('VV').first().bandNames().getInfo())
         except Exception as e:
             self.fail(msg=e)
-            
+
+
+class TestHarmonicTimeSeries(unittest.TestCase):
+    def setUp(self) -> None:
+        ee.Initialize()
+        geom = ee.Geometry.Point([-77.3850, 44.1631])
+        self.dataset = ee.ImageCollection('COPERNICUS/S2_HARMONIZED').filterBounds(geom).filterDate('2020', '2021')
+        self.harmonic = HarmonicTimeSeries(self.dataset, 'B8')
+
+    def test_add_constant(self):
+        self.harmonic.add_constant()
+        result = self.harmonic.dataset.first().bandNames().getInfo()
+        self.assertIn('constant', result)
+
+    def test_add_time(self):
+        self.harmonic.add_time()
+        result = self.harmonic.dataset.first().bandNames().getInfo()
+        self.assertIn('t', result)
+
+    def test_add_harmonics(self):
+        self.harmonic.add_constant().add_time().add_harmonics()
+        result = self.harmonic.dataset.first().bandNames().getInfo()
+        for name in self.harmonic.cos_names + self.harmonic.sin_names:
+            self.assertIn(name, result)
+
+    def test_set_harmonic_trend(self):
+        self.harmonic.add_constant().add_time().add_harmonics().set_harmonic_trend()
+        self.assertIsNotNone(self.harmonic.trend)
+
+    def test_add_harmonic_coefficients(self):
+        self.harmonic.add_constant().add_time().add_harmonics().set_harmonic_trend().add_harmonic_coefficients()
+        result = self.harmonic.dataset.first().bandNames().getInfo()
+        for name in self.harmonic.independet:
+            self.assertIn(f"{name}_coef", result)
+
+    def test_add_phase(self):
+        self.harmonic.add_constant().add_time().add_harmonics().set_harmonic_trend().add_harmonic_coefficients().add_phase()
+        result = self.harmonic.dataset.first().bandNames().getInfo()
+        for _, mode in enumerate(list(range(self.harmonic.modes)), start= 1):
+            self.assertIn(f'phase_{_}', result)
+
+    def test_add_amplitude(self):
+        self.harmonic.add_constant().add_time().add_harmonics().set_harmonic_trend().add_harmonic_coefficients().add_amplitue()
+        result = self.harmonic.dataset.first().bandNames().getInfo()
+        for _, mode in enumerate(list(range(self.harmonic.modes)), start= 1):
+            self.assertIn(f'amplitude_{_}', result)
+
+    def test_build(self):
+        result = self.harmonic.build()
+        self.assertIsInstance(result, ee.ImageCollection)
+
+    def test_transform(self):
+        result = self.harmonic.transform()
+        self.assertIsInstance(result, ee.Image)
