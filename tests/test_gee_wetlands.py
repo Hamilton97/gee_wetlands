@@ -215,4 +215,46 @@ class TestEEDataUtils(unittest.TestCase):
 
         contents = get_assets(parent)
         
-        assert (contents == target).any().any() == True  
+        assert (contents == target).any().any() == True 
+
+
+class TestFeatures(unittest.TestCase):
+    def setUp(self) -> None:
+        ee.Initialize()
+        self.features = Features("projects/cnwi-er-124/assets/data/features_124")
+
+    def test_extract(self):
+        region = ee.FeatureCollection("projects/cnwi-er-124/assets/data/regions_124")
+        image = Sentinel2TOA().preprocessing(region, '2018', '2019').apply_cloud_percent_filer().apply_cloud_mask().map(add_ndvi('B8', 'B4')).composite()
+        updated_features = self.features.extract(image)
+        self.assertIsInstance(updated_features, Features)
+        try:
+            pprint(updated_features.dataset.first().getInfo())
+        except Exception as e:
+            self.fail(e)
+
+    def test_get_labels(self):
+        label_col = "class_name"
+        labels = self.features.get_lables(label_col)
+        self.assertIsInstance(labels, ee.List)
+        pprint(labels.getInfo())
+
+    def test_get_split(self):
+        meta_flag = "type"
+        value = 1
+        filtered_features = self.features.get_split(meta_flag, value)
+        self.assertIsInstance(filtered_features, Features)
+        expected = [1]
+        actual = filtered_features._dataset.aggregate_array(meta_flag).distinct().getInfo()
+        assert expected == actual
+
+    # def test_export_to_asset(self):
+    #     dest = "projects/cnwi-er-124/assets/data/features_124_test"
+    #     start = True
+    #     export_task = self.features.export_to_asset(dest, start)
+    #     self.assertIsInstance(export_task, ee.batch.Task)
+    #     if start:
+    #         self.assertTrue(export_task.status()["state"] == "READY" or export_task.status()["state"] == "RUNNING")
+
+if __name__ == '__main__':
+    unittest.main()

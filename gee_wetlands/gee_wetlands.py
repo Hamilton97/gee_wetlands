@@ -342,7 +342,7 @@ class Sentinel2TOA(ee.ImageCollection):
         super().__init__("COPERNICUS/S2_HARMONIZED")
 
     def apply_cloud_percent_filer(self, percent: float = 20.0) -> Sentinel2TOA:
-        self.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', percent))
+        return self.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', percent))
 
     def apply_cloud_mask(self):
         
@@ -824,6 +824,84 @@ def compute_cnwi_terrain_variables(dataset: ee.Image, geom: ee.Geometry | ee.Fea
     pm_dataset = compute_terrain_variables(pm_dataset, geom, selectors=pm_bands)
     
     return gausian_dataset.addBands(pm_dataset)
+
+
+# Features ~~
+
+# Class ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class Features:
+    """
+    A class representing a collection of features in Google Earth Engine.
+    """
+
+    def __init__(self, args: Any):
+        self.dataset = args
+    
+    @property
+    def dataset(self):
+        return self._dataset
+
+    @dataset.setter
+    def dataset(self, args: Any):
+        if isinstance(self, ee.FeatureCollection):
+            self._dataset = args
+        else:
+            self._dataset = ee.FeatureCollection(args)
+
+    def extract(self, image: ee.Image, **kwargs) -> Features:
+        """
+        Extracts the features from the given image and updates the dataset.
+
+        Args:
+            image (ee.Image): The image to extract features from.
+            **kwargs: Additional keyword arguments to be passed to the `sampleRegions` method.
+
+        Returns:
+            Features: The updated Features object.
+        """
+        self._dataset = image.sampleRegions(collection=self._dataset, **kwargs)
+        return self
+
+    def get_lables(self, label_col: str) -> ee.List:
+        """
+        Retrieves the unique labels from the specified label column.
+
+        Args:
+            label_col (str): The name of the label column.
+
+        Returns:
+            ee.List: A list of unique labels.
+        """
+        return self._dataset.aggregate_array(label_col).distinct()
+    
+    def get_split(self, meta_flag: str, value: str | int) -> Features:
+        """
+        Filters the dataset based on the specified metadata flag and value.
+
+        Args:
+            meta_flag (str): The name of the metadata flag.
+            value (str | int): The value to filter on.
+
+        Returns:
+            Features: A new Features object with the filtered dataset.
+        """
+        return Features(self._dataset.filter(ee.Filter.eq(meta_flag, value)))
+
+    def export_to_asset(self, dest: str, start: bool = True) -> ee.batch.Task:
+        """
+        Exports the dataset to a Google Earth Engine asset.
+
+        Args:
+            dest (str): The destination asset ID.
+            start (bool, optional): Whether to start the export task immediately. Defaults to True.
+
+        Returns:
+            ee.batch.Task: The export task.
+        """
+        task = ee.batch.Export.table.toAsset(self._dataset, description="", assetId=dest)
+        if start:
+            task.start()
+        return task
 
 
 # Earth Engine File System Utilites
