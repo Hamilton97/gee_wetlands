@@ -3,7 +3,7 @@ from math import pi
 from typing import Callable, Any
 
 import ee
-
+import pandas as pd
 
 
 def preprocessing(self, *args) -> ee.ImageCollection:
@@ -824,4 +824,101 @@ def compute_cnwi_terrain_variables(dataset: ee.Image, geom: ee.Geometry | ee.Fea
     pm_dataset = compute_terrain_variables(pm_dataset, geom, selectors=pm_bands)
     
     return gausian_dataset.addBands(pm_dataset)
+
+
+# Earth Engine File System Utilites
+
+# Functions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+def get_assets(parent: str) -> pd.DataFrame:
+    """
+    Retrieve assets that exist one level under the specified parent.
+
+    Args:
+        parent (str): The parent asset path.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the retrieved assets.
+    """
+    response = ee.data.listAssets({'parent': parent}).get('assets', None)
+    if response is None:
+        return pd.DataFrame()
+    return pd.DataFrame(response)
+
+
+def asset_exists(asset_id: str) -> bool:
+    """
+    Check if the given asset ID exists in the assets collection.
+
+    Args:
+        asset_id (str): The ID of the asset to check.
+
+    Returns:
+        bool: True if the asset exists, False otherwise.
+    """
+    parent = "/".join(asset_id.split('/')[:-1])
+    assets = get_assets(parent)
+    
+    if assets.empty:
+        return False
+
+    return (assets == asset_id).any().any()
+
+
+def mk_dir(folder_path: str) -> None:
+    """
+    Creates a directory in Google Earth Engine.
+
+    Args:
+        folder_path (str): The path of the folder to be created.
+
+    Returns:
+        None
+    """
+    try:
+        ee.data.createAssetHome(folder_path) # try exceot here to handle the EE Execption if the folder already exits
+    except ee.ee_exception.EEException:
+        return None
+    return None
+
+
+# Earth Engine Task Monitoring
+
+# Functions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+def monitor_task(task: ee.batch.Task) -> int:
+    """
+    Monitors the status of a given Earth Engine batch task and returns the status code.
+
+    Args:
+        task (ee.batch.Task): The Earth Engine batch task to monitor.
+
+    Returns:
+        int: The status code of the task. Possible values are:
+            - 0: COMPLETED
+            - 1: FAILED
+            - 2: CANCELLED
+    """
+    import time
+    while task.status()['state'] in ['READY', 'RUNNING']:
+        time.sleep(5)
+    
+    status_code = {
+        'COMPLETED': 0,
+        'FAILED': 1,
+        'CANCELLED': 2
+    }
+    
+    return status_code[task.status()['state']]
+
+
+def reset_processing_env() -> None:
+    """
+    Resets the processing environment for Google Earth Engine.
+    
+    This function resets the processing environment for Google Earth Engine by calling the `ee.Reset()` and `ee.Initialize()` functions.
+    It does not take any arguments and does not return any value.
+    """
+    ee.Reset()
+    ee.Initialize()
+    return None
 
