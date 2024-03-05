@@ -256,5 +256,21 @@ class TestFeatures(unittest.TestCase):
     #     if start:
     #         self.assertTrue(export_task.status()["state"] == "READY" or export_task.status()["state"] == "RUNNING")
 
-if __name__ == '__main__':
-    unittest.main()
+class TestImageStack(unittest.TestCase):
+    def setUp(self) -> None:
+        ee.Initialize()
+        self.image1 = ee.Image(1).rename('B1')
+        self.image2 = ee.Image(2).rename('B2')
+        self.stack = ImageStack()
+
+    def test_add_init(self):
+        result = self.stack.add(self.image1)
+        self.assertIsInstance(result, ImageStack)
+        assert (self.stack.dataset is not None) == True
+
+    def test_add_multi(self):
+        self.stack.add(self.image1)
+        self.stack.add(self.image2)
+        expected = ['B1', 'B2']
+        actual = self.stack.build().bandNames().getInfo()
+        self.assertEqual(expected, actual)

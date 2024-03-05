@@ -1000,3 +1000,37 @@ def reset_processing_env() -> None:
     ee.Initialize()
     return None
 
+
+# Stacking
+
+# Class ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+class ImageStack:
+    """
+    A class representing a stack of images in Google Earth Engine.
+    """
+
+    def __init__(self) -> None:
+        self.dataset = []
+    
+    def add(self, image: ee.Iamge) -> ImageStack:
+        """
+        Adds an image to the stack.
+
+        Args:
+            image (ee.Image): The image to add to the stack.
+
+        Returns:
+            ImageStack: The updated ImageStack object.
+        """
+        self.dataset.append(image)
+        return self
+
+    def build(self) -> ee.Image:
+        """
+        Builds and returns the stacked image.
+
+        Returns:
+            ee.Image: The stacked image.
+        """
+        return ee.Image.cat(*self.dataset)
