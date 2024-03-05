@@ -169,3 +169,50 @@ class TestHarmonicTimeSeries(unittest.TestCase):
     def test_transform(self):
         result = self.harmonic.transform()
         self.assertIsInstance(result, ee.Image)
+
+
+class TestEEDataUtils(unittest.TestCase):
+    def setUp(self) -> None:
+        ee.Initialize()
+        self.parent = 'projects/cnwi-er-124/assets/data'
+        return super().setUp()
+
+    def test_get_assets(self):
+        from pandas import DataFrame
+        contents = get_assets(self.parent)
+        pprint(contents)
+        self.assertIsInstance(contents, DataFrame)
+    
+    def test_asset_exists_false(self):
+        asset_id = 'projects/cnwi-er-124/assets/data/features_124_12'
+        expected = False
+
+        actual = asset_exists(asset_id=asset_id)
+        
+        assert expected == actual
+
+    def test_asset_exists_true(self):
+        asset_id = 'projects/cnwi-er-124/assets/data/features_124'
+        expected = True
+
+        actual = asset_exists(asset_id=asset_id)
+        
+        assert expected == actual
+
+    def test_mk_dir_exists(self):
+        asset_id = 'projects/cnwi-er-124/assets/data'
+        
+        try:
+            mk_dir(asset_id)
+        except Exception as e:
+            self.fail(msg=e)
+
+    def test_mk_dir_does_not_exist(self):
+        target = 'projects/cnwi-er-124/assets/data1'
+        parent = "/".join(target.split("/")[:-1])
+        
+        mk_dir(target)
+
+        contents = get_assets(parent)
+        
+        assert (contents == target).any().any() == True  
