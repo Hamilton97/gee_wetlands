@@ -1034,3 +1034,257 @@ class ImageStack:
             ee.Image: The stacked image.
         """
         return ee.Image.cat(*self.dataset)
+
+
+# Models
+
+# Smile Random Forest ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class SmileRandomForest:
+    """
+    A class representing a Random Forest classifier implemented in Google Earth Engine (GEE).
+    """
+
+    def __init__(self, ntrees: int = 1000, **kwargs) -> None:
+        """
+        Initializes a SmileRandomForest object.
+
+        Args:
+            ntrees (int, optional): The number of trees in the random forest. Defaults to 1000.
+            **kwargs: Additional keyword arguments for the random forest classifier.
+        """
+        self.ntrees = ntrees
+        self.kwargs = kwargs  # hyper parameters
+        self.model = None
+        self.class_prop = None
+
+    @classmethod
+    def load_model(cls, asset_id: str) -> SmileRandomForest:
+        """
+        Loads a pre-trained SmileRandomForest model from a GEE asset.
+
+        Args:
+            asset_id (str): The asset ID of the pre-trained model.
+
+        Returns:
+            SmileRandomForest: An instance of the SmileRandomForest class with the loaded model.
+        """
+        instance = cls()
+        instance.model = ee.Classifier.load(asset_id)
+        return instance
+
+    def train(self, features, class_prop, predictors):
+        """
+        Trains the random forest classifier using the specified features, class property, and predictors.
+
+        Args:
+            features: The input features for training. Can be a Features object or a GEE dataset.
+            class_prop: The property containing the class labels.
+            predictors: The list of property names to be used as predictors.
+
+        Returns:
+            SmileRandomForest: The trained SmileRandomForest object.
+        """
+        if isinstance(features, Features):
+            features = features.dataset
+
+        self.model = (ee.Classifier.smileRandomForest(numberOfTrees=self.ntrees, **self.kwargs)
+                      .train(features, class_prop, predictors))
+        return self
+
+    def predict(self, X: ee.Image | ee.FeatureCollection) -> ee.Image | ee.FeatureCollection:
+        """
+        Predicts the class labels for the input data using the trained random forest classifier.
+
+        Args:
+            X (ee.Image | ee.FeatureCollection): The input data to be classified.
+
+        Returns:
+            ee.Image | ee.FeatureCollection: The classified image or feature collection.
+        """
+        if self.model is None:
+            raise ValueError('You must train the model before predicting')
+        if isinstance(X, Features):
+            X = X.dataset
+        return X.classify(self.model)
+
+    def assess(self, test: ee.FeatureCollection) -> ErrorMatrix:
+        """
+        Assesses the performance of the random forest classifier on a test dataset.
+
+        Args:
+            test (ee.FeatureCollection): The test dataset.
+
+        Returns:
+            ErrorMatrix: An ErrorMatrix object representing the classification performance.
+        """
+        predicted = self.predict(test)
+        order = test.aggregate_array(self.class_prop).distinct()
+        return ErrorMatrix(predicted, label_col=self.class_prop, order=order)
+
+    def save(self, dest: str, start: bool = True) -> ee.batch.Task:
+        """
+        Saves the trained random forest classifier to a GEE asset.
+
+        Args:
+            dest (str): The asset ID where the model will be saved.
+            start (bool, optional): Whether to start the export task immediately. Defaults to True.
+
+        Returns:
+            ee.batch.Task: The export task.
+        """
+        task = ee.batch.Export.classifier.toAsset(**{
+            'classifier': self.model,
+            'description': '',
+            'assetId': dest
+        })
+
+        if start:
+            task.start()
+        return task
+
+# Assessment ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class ErrorMatrix:
+    """
+    Represents an error matrix for evaluating classification accuracy.
+
+    Args:
+        predicted (ee.FeatureCollection): The predicted feature collection.
+        label_col (str): The name of the label column.
+        order (list[str] | ee.List, optional): The order of classes in the matrix. Defaults to None.
+        name (str, optional): The name of the error matrix. Defaults to None.
+    """
+
+    def __init__(self, predicted: ee.FeatureCollection, label_col: str, order: list[str] | ee.List = None, name: str = None) -> None:
+        self.matrix = self._mk_error_matrix(
+            predicted=predicted,
+            label_col=label_col,
+            order=order,
+            name=name
+        )
+
+    @property
+    def error_matrix(self) -> ee.Array:
+        """
+        Get the error matrix as an ee.Array.
+
+        Returns:
+            ee.Array: The error matrix.
+        """
+        return self.matrix.array()
+
+    @property
+    def accuracy(self) -> ee.Number:
+        """
+        Get the overall accuracy of the error matrix.
+
+        Returns:
+            ee.Number: The overall accuracy.
+        """
+        return self.matrix.accuracy()
+    
+    @property
+    def producers_accuracy(self) -> ee.List:
+        """
+        Get the producer's accuracy for each class.
+
+        Returns:
+            ee.List: The producer's accuracy for each class.
+        """
+        return self.matrix.producersAccuracy().toList().flatten()
+    
+    @property
+    def consumers_accuracy(self) -> ee.List:
+        """
+        Get the consumer's accuracy for each class.
+
+        Returns:
+            ee.List: The consumer's accuracy for each class.
+        """
+        return self.matrix.consumersAccuracy().toList().flatten()
+    
+    @property
+    def order(self) -> ee.List:
+        """
+        Get the order of classes in the error matrix.
+
+        Returns:
+            ee.List: The order of classes.
+        """
+        return self.matrix.order()
+
+    @staticmethod
+    def _mk_error_matrix(predicted, label_col, name, order):
+        """
+        Create an error matrix.
+
+        Args:
+            predicted (ee.FeatureCollection): The predicted feature collection.
+            label_col (str): The name of the label column.
+            name (str): The name of the error matrix.
+            order (list[str] | ee.List): The order of classes in the matrix.
+
+        Returns:
+            ee.ConfusionMatrix: The error matrix.
+        """
+        return predicted.errorMatrix(label_col, name, order = order)
+
+
+class AssessmentTable:
+    """
+    Represents an assessment table for error matrix data.
+
+    Attributes:
+        table (ee.FeatureCollection): The assessment table generated from the error matrix data.
+
+    Methods:
+        __init__(self, matrix: ErrorMatrix) -> None: Initializes the AssessmentTable object.
+        save_to_drive(self, file_name: str, folder_name: str, start: bool = True) -> ee.batch.Task: Saves the assessment table to Google Drive.
+        _make_assessment_table(data: ErrorMatrix) -> ee.FeatureCollection: Creates the assessment table from the error matrix data.
+    """
+
+    def __init__(self, matrix: ErrorMatrix) -> None:
+        self.table = self._make_assessment_table(matrix)
+    
+    def save_to_drive(self, file_name: str, folder_name: str, start: bool = True) -> ee.batch.Task:
+        """
+        Saves the assessment table to Google Drive.
+
+        Args:
+            file_name (str): The name of the file to be saved.
+            folder_name (str): The name of the folder in Google Drive where the file will be saved.
+            start (bool, optional): Whether to start the export task immediately. Defaults to True.
+
+        Returns:
+            ee.batch.Task: The export task for saving the assessment table.
+        """
+        task = ee.batch.Export.table.toDrive(
+            collection=self.table,
+            description="",
+            folder=folder_name,
+            fileNamePrefix=file_name,
+            fileFormat='GeoJSON'
+        )
+
+        if start:
+            task.start()
+
+        return task
+
+    @staticmethod
+    def _make_assessment_table(data: ErrorMatrix) -> ee.FeatureCollection:
+        """
+        Creates the assessment table from the error matrix data.
+
+        Args:
+            data (ErrorMatrix): The error matrix data.
+
+        Returns:
+            ee.FeatureCollection: The assessment table generated from the error matrix data.
+        """
+        return ee.FeatureCollection([
+            ee.Feature(None, {'matrix': data.error_matrix}),
+            ee.Feature(None, {'order': data.order}),
+            ee.Feature(None, {'consumers': data.consumers_accuracy}),
+            ee.Feature(None, {'producers': data.producers_accuracy}),
+            ee.Feature(None, {'overall': data.accuracy})
+        ])
