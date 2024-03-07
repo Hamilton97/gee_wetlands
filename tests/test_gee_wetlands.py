@@ -274,3 +274,46 @@ class TestImageStack(unittest.TestCase):
         expected = ['B1', 'B2']
         actual = self.stack.build().bandNames().getInfo()
         self.assertEqual(expected, actual)
+
+
+class TestSmileRandomForest(unittest.TestCase):
+    def setUp(self) -> None:
+        ee.Initialize()
+        self.features = Features("projects/cnwi-er-124/assets/samples_124")
+        self.class_prop = "class_name"
+        self.predictors = ['B2', 'B3', 'B4', 'B8', 'B11', 'B12', 'NDVI']
+
+    def test_load_model(self):
+        asset_id = "projects/cnwi-er-124/assets/model_124"
+        model = SmileRandomForest.load_model(asset_id)
+        self.assertIsInstance(model, SmileRandomForest)
+        self.assertIsNotNone(model.model)
+
+    def test_train(self):
+        model = SmileRandomForest()
+        model.train(self.features, self.class_prop, self.predictors)
+        self.assertIsNotNone(model.model)
+
+    def test_predict(self):
+        model = SmileRandomForest()
+        model.train(self.features, self.class_prop, self.predictors)
+        test_data = ee.FeatureCollection("projects/cnwi-er-124/assets/samples_124").filter(ee.Filter.eq('type', 2))
+        result = model.predict(test_data)
+        self.assertIsInstance(result, ee.FeatureCollection)
+
+    def test_assess(self):
+        model = SmileRandomForest()
+        model.train(self.features, self.class_prop, self.predictors)
+        test_data = ee.FeatureCollection("projects/cnwi-er-124/assets/samples_124").filter(ee.Filter.eq('type', 2))
+        error_matrix = model.assess(test_data)
+        self.assertIsInstance(error_matrix, ErrorMatrix)
+
+    def test_save(self):
+        model = SmileRandomForest()
+        model.train(self.features, self.class_prop, self.predictors)
+        dest = "projects/cnwi-er-124/assets/data/model"
+        task = model.save(dest, start=False)
+        self.assertIsInstance(task, ee.batch.Task)
+
+if __name__ == '__main__':
+    unittest.main()
